@@ -16,6 +16,24 @@ Before deploying to the Mac Mini, ensure the server meets these exact specificat
 
 ---
 
+## ⚡ The Autonomous Way (Zero-Interaction Installation)
+
+We have included a fully automated launcher script `start.sh` in the root of the project. This script installs all python dependencies, compiles the SPM Swift neural bridge, applies the ad-hoc security codesignature, clean-restarts port conflicts, and launches both services cleanly in the background:
+
+```bash
+# Clone the repository onto your Mac Mini server and execute:
+./start.sh
+```
+
+**What the script does automatically:**
+1. Installs all required Python dependencies silently (`pip3 install --quiet ...`).
+2. Compiles the SPM Swift LLM bridge if not already compiled.
+3. Registers the required ad-hoc codesignature (`codesign -s - --force llm-bridge`) so it can access macOS local language models securely.
+4. Auto-detects if `tmux` is installed. If so, it boots both the FastAPI web server and task worker inside a detached tmux session named `aggregator` to bypass background daemon model sandboxing blocks. If not, it falls back to background processes using `nohup`.
+5. Cleanly prunes and restarts any stale processes running on port `5005` to prevent conflicts.
+
+---
+
 ## 🛠️ Step-by-Step Porting & Setup
 
 On your new Mac Mini server, open Terminal (or SSH into it) and execute these instructions. You can give these exact steps to a local **Antigravity** coding assistant on the Mac Mini to automate the installation:

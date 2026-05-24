@@ -61,6 +61,23 @@ smart-rss-aggregator/
 
 ---
 
+## 🚀 Zero-Interaction Quick Start (Autonomous Bootstrapping)
+
+For a fully automated, zero-interaction setup and startup, you can skip the manual installation steps and run the autonomous bootstrap launcher script directly from the project root:
+
+```bash
+./start.sh
+```
+
+**What this script does autonomously:**
+1. Installs all required Python dependencies silently.
+2. Compiles the Swift local LLM bridge if not already compiled.
+3. Automatically registers the required ad-hoc codesignature on the compiled binary.
+4. Auto-detects if `tmux` is installed. If so, it boots both the FastAPI web server and task worker inside a detached tmux session named `aggregator` to bypass background daemon model sandboxing blocks. If not, it falls back to background processes using `nohup`.
+5. Cleanly prunes and restarts any stale processes running on port `5005` to prevent conflicts.
+
+---
+
 ## Step 1: Compiling the Swift LLM Bridge
 
 To compile the Swift command-line helper using optimized SPM building and link it to the project root:
