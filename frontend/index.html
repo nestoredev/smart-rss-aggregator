@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart RSS Aggregator - Local Apple Intelligence Reader</title>
+    <!-- Modern typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Local Tailwind CSS -->
+    <script src="/assets/tailwind.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                        outfit: ['Outfit', 'sans-serif'],
+                    },
+                    colors: {
+                        dark: {
+                            base: '#0B0F19',
+                            card: 'rgba(17, 24, 39, 0.7)',
+                            border: 'rgba(255, 255, 255, 0.08)'
+                        },
+                        intel: {
+                            purple: '#A855F7',
+                            blue: '#3B82F6',
+                            cyan: '#06B6D4'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background: radial-gradient(circle at 50% 0%, #111827 0%, #030712 100%);
+            color: #F3F4F6;
+            min-height: 100vh;
+        }
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.65);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+        .text-glow {
+            text-shadow: 0 0 12px rgba(168, 85, 247, 0.4);
+        }
+        .intel-gradient {
+            background: linear-gradient(135deg, #3B82F6 0%, #8B5CF6 50%, #EC4899 100%);
+        }
+        .intel-border-glow {
+            box-shadow: 0 0 15px rgba(139, 92, 246, 0.15);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .intel-border-glow:hover {
+            box-shadow: 0 0 25px rgba(139, 92, 246, 0.35);
+            border-color: rgba(168, 85, 247, 0.4);
+            transform: translateY(-2px);
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(3, 7, 18, 0.5);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        /* Article Reader styling */
+        #reader-content a {
+            color: #C084FC;
+            text-decoration: underline;
+            transition: color 0.15s;
+        }
+        #reader-content a:hover {
+            color: #E9D5FF;
+        }
+        #reader-content img {
+            border-radius: 16px;
+            margin: 16px 0;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            max-width: 100%;
+            height: auto;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        #reader-content p {
+            margin-bottom: 16px;
+            line-height: 1.7;
+        }
+        #reader-content ul {
+            margin: 12px 0 12px 20px;
+            list-style-type: disc;
+        }
+        #reader-content ol {
+            margin: 12px 0 12px 20px;
+            list-style-type: decimal;
+        }
+        #reader-content li {
+            margin-bottom: 6px;
+        }
+    </style>
+</head>
+<body class="font-sans antialiased overflow-x-hidden">
+
+    <!-- Mobile-Proof iOS Safari Viewport Wrapper -->
+    <div class="relative w-full min-h-screen overflow-x-hidden">
+
+        <!-- Glowing Background Lights -->
+        <div class="absolute top-0 left-1/4 w-96 h-96 bg-blue-600/10 rounded-full blur-[100px] pointer-events-none"></div>
+        <div class="absolute top-1/3 right-1/4 w-96 h-96 bg-purple-600/10 rounded-full blur-[100px] pointer-events-none"></div>
+
+        <div class="flex min-h-screen">
+        
+        <!-- Mobile Header Navigation (Floating, only visible on small screens) -->
+        <header class="xl:hidden fixed top-0 left-0 right-0 h-16 bg-slate-950/85 backdrop-blur-lg border-b border-slate-900 flex items-center justify-between px-6 z-20">
+            <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 rounded-lg intel-gradient flex items-center justify-center shadow-lg shadow-purple-900/20">
+                    <svg class="w-4 h-4 text-white animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                    </svg>
+                </div>
+                <div class="flex flex-col">
+                    <span class="font-outfit font-extrabold text-sm leading-tight text-slate-100">SmartAggregator</span>
+                    <span class="text-[8px] uppercase tracking-wider text-purple-400 font-outfit">Apple Intelligence</span>
+                </div>
+            </div>
+            <button onclick="toggleMobileSidebar()" class="text-slate-400 hover:text-white p-2 rounded-xl bg-slate-900/60 border border-slate-800 focus:outline-none transition-all duration-150">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                </svg>
+            </button>
+        </header>
+
+        <!-- Tap-to-Close Sidebar Background Overlay for Mobile -->
+        <div id="sidebar-overlay" onclick="toggleMobileSidebar()" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-20 xl:hidden transition-all duration-300"></div>
+
+        <!-- Sidebar Navigation -->
+        <aside class="w-80 border-r border-slate-800/80 bg-slate-950/85 backdrop-blur-lg flex flex-col fixed inset-y-0 left-0 transform -translate-x-full xl:translate-x-0 transition-transform duration-300 ease-in-out h-full z-30">
+            <!-- App Branding -->
+            <div class="p-6 border-b border-slate-900 flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl intel-gradient flex items-center justify-center shadow-lg shadow-purple-900/30">
+                    <svg class="w-5 h-5 text-white animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="font-outfit font-extrabold text-lg leading-tight bg-clip-text text-transparent bg-gradient-to-r from-white via-slate-100 to-slate-300">
+                        SmartAggregator
+                    </h1>
+                    <span class="text-[10px] uppercase font-semibold tracking-wider text-purple-400 font-outfit">Apple Intelligence Local</span>
+                </div>
+            </div>
+
+            <!-- Feed Operations -->
+            <div class="p-6 flex-grow flex flex-col gap-6 overflow-y-auto">
+                <!-- Sync Trigger -->
+                <div>
+                    <button id="sync-btn" onclick="triggerSync()" class="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl glass-panel text-sm font-semibold text-white hover:bg-slate-800/50 hover:border-slate-700 transition-all duration-300">
+                        <svg id="sync-icon" class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 7.89M9 11l3-3 3 3m-3-3v12"></path>
+                        </svg>
+                        <span id="sync-text">Force Sync Feeds</span>
+                    </button>
+                </div>
+
+                <!-- Add Feed Domain form -->
+                <div class="flex flex-col gap-3">
+                    <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400 font-outfit">Add Source Domain</h2>
+                    <form id="add-feed-form" onsubmit="addFeed(event)" class="flex flex-col gap-2">
+                        <div class="relative">
+                            <input 
+                                type="text" 
+                                id="feed-url" 
+                                placeholder="e.g. techcrunch.com" 
+                                required
+                                class="w-full py-2.5 pl-3 pr-10 rounded-xl bg-slate-900/90 border border-slate-800 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all duration-200"
+                            >
+                            <div class="absolute right-3 top-3.5 flex items-center justify-center pointer-events-none">
+                                <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                                </svg>
+                            </div>
+                        </div>
+                        <button 
+                            type="submit" 
+                            id="add-feed-btn"
+                            class="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 active:scale-[0.98] text-white text-xs font-bold uppercase tracking-wider transition-all duration-150 flex items-center justify-center gap-2 shadow-lg shadow-purple-900/20"
+                        >
+                            <span>Discover & Add</span>
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Tracked Feeds List -->
+                <div class="flex-grow flex flex-col gap-3">
+                    <div class="flex justify-between items-center">
+                        <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400 font-outfit">Tracked Sources</h2>
+                        <span id="feeds-count" class="text-[10px] px-2 py-0.5 rounded-full bg-slate-900 border border-slate-800 text-slate-300 font-bold">0</span>
+                    </div>
+                    <div id="feeds-list" class="flex flex-col gap-2 overflow-y-auto pr-1 max-h-[300px]">
+                        <!-- Render feeds dynamically -->
+                        <div class="text-xs text-slate-500 text-center py-6">No sources added yet.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Author & Version Info -->
+            <div class="p-6 border-t border-slate-900 bg-slate-950/60 flex flex-col gap-1 text-[11px] text-slate-500 font-outfit">
+                <div class="flex items-center gap-1.5 text-purple-400 font-medium">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+                    <span>100% Local Apple Silicon Node</span>
+                </div>
+                <div>Designed for macOS Sequoia & 26+</div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="flex-grow min-w-0 xl:ml-80 p-4 sm:p-6 lg:p-8 xl:p-12 pt-24 xl:pt-12 min-h-screen">
+            
+            <!-- Main Content Header -->
+            <header class="flex flex-col xl:flex-row xl:items-center justify-between gap-6 mb-12">
+                <div>
+                    <h2 class="font-outfit font-extrabold text-3xl xl:text-4xl text-slate-50 text-glow">
+                        Intelligent Digest
+                    </h2>
+                    <p class="text-slate-400 mt-2 text-sm max-w-xl">
+                        Accepts news domains, auto-discovers RSS feeds, and uses on-device LLM structures to consolidate breaking stories in a 6-hour window.
+                    </p>
+                </div>
+                
+                <!-- Status & Timing Badge -->
+                <div class="flex items-center gap-4 bg-slate-900/60 backdrop-blur-md border border-slate-800/80 px-4 py-3 rounded-2xl">
+                    <div class="flex flex-col">
+                        <span class="text-[10px] uppercase font-bold text-purple-400 tracking-wider font-outfit">Aggregator Status</span>
+                        <span id="aggregator-status" class="text-xs font-semibold text-slate-200 mt-0.5">Idle</span>
+                    </div>
+                    <div class="w-px h-6 bg-slate-800"></div>
+                    <div class="flex flex-col">
+                        <span class="text-[10px] uppercase font-bold text-slate-400 tracking-wider font-outfit">Last Scanned</span>
+                        <span id="last-scanned" class="text-xs font-semibold text-slate-200 mt-0.5">Never</span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Master Stories Feed Container -->
+            <section class="max-w-4xl flex flex-col gap-8">
+                <div class="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+                    <h3 class="font-outfit font-bold text-lg text-slate-200">Latest Consolidated Stories</h3>
+                    <div class="flex flex-wrap items-center gap-4">
+                        <!-- Coverage segment selector -->
+                        <div class="flex bg-slate-950/60 p-1 rounded-xl border border-slate-800 text-[11px] font-semibold text-slate-400 select-none">
+                            <button id="filter-coverage-all" onclick="setCoverageFilter('all')" class="px-3 py-1.5 rounded-lg transition-all duration-200">All</button>
+                            <button id="filter-coverage-multi" onclick="setCoverageFilter('multi')" class="px-3 py-1.5 rounded-lg transition-all duration-200">Multi-Source</button>
+                            <button id="filter-coverage-single" onclick="setCoverageFilter('single')" class="px-3 py-1.5 rounded-lg transition-all duration-200">Single Source</button>
+                        </div>
+                        <div class="text-xs text-slate-400 flex items-center gap-2">
+                            <span>Sort: Newest First</span>
+                            <span class="text-slate-600">•</span>
+                            <span id="stories-count">0 stories</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Filter Banner -->
+                <div id="filter-banner" class="hidden"></div>
+
+                <!-- Feed loading indicator -->
+                <div id="feed-loader" class="hidden flex flex-col items-center justify-center py-16 gap-3">
+                    <div class="w-10 h-10 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+                    <span class="text-xs text-slate-400 font-medium">Apple Intelligence consolidating stories...</span>
+                </div>
+
+                <!-- Master Story Feed -->
+                <div id="stories-feed" class="flex flex-col gap-6">
+                    <!-- Render dynamic master stories -->
+                    <div class="glass-panel rounded-3xl p-12 text-center flex flex-col items-center justify-center gap-4 border-dashed border-2 border-slate-800">
+                        <div class="w-16 h-16 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center">
+                            <svg class="w-8 h-8 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"></path>
+                            </svg>
+                        </div>
+                        <div>
+                            <h4 class="font-outfit font-bold text-base text-slate-300">Feed is empty</h4>
+                            <p class="text-xs text-slate-500 mt-1 max-w-sm">Add feed source domains in the sidebar (e.g. macrumors.com) to trigger intelligent summary consolidation.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+</div>
+
+    <!-- Slide-over Article Reader Drawer -->
+    <div id="reader-drawer" class="hidden fixed inset-0 z-50 pointer-events-none transition-all duration-300 ease-in-out opacity-0">
+        <!-- Backdrop blur overlay -->
+        <div id="reader-overlay" onclick="closeReaderDrawer()" class="absolute inset-0 bg-black/60 backdrop-blur-md transition-opacity duration-300 opacity-0 pointer-events-auto cursor-pointer"></div>
+        
+        <!-- Sliding Content panel -->
+        <div id="reader-panel" class="absolute top-0 right-0 bottom-0 w-full sm:w-[500px] md:w-[640px] bg-slate-950/95 border-l border-slate-900/80 shadow-2xl p-6 md:p-8 flex flex-col gap-6 transform translate-x-full transition-transform duration-300 ease-in-out pointer-events-auto">
+            <!-- Header controls -->
+            <div class="flex items-center justify-between border-b border-slate-900 pb-4">
+                <div class="flex items-center gap-3">
+                    <span id="reader-source" class="text-xs font-bold uppercase tracking-wider font-outfit text-purple-400 bg-purple-950/20 px-2.5 py-0.5 rounded-full border border-purple-500/10">Source</span>
+                    <span id="reader-date" class="text-[10px] text-slate-400 font-medium">Date</span>
+                </div>
+                <button onclick="closeReaderDrawer()" class="text-slate-400 hover:text-white p-2 rounded-xl bg-slate-900/60 border border-slate-800 focus:outline-none transition-all duration-150">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            
+            <!-- Article Body -->
+            <div class="flex-grow overflow-y-auto flex flex-col gap-4 pr-1">
+                <h2 id="reader-title" class="font-outfit font-extrabold text-xl md:text-2xl text-slate-100 leading-tight">Article Title</h2>
+                <div id="reader-content" class="text-slate-300 leading-relaxed text-sm font-light space-y-2 pt-2 select-text">
+                    <!-- Dynamic Summary Content -->
+                </div>
+            </div>
+            
+            <!-- Footer controls -->
+            <div class="border-t border-slate-900 pt-4 flex items-center justify-between">
+                <a id="reader-link" href="#" target="_blank" class="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 active:scale-[0.98] text-white text-xs font-bold uppercase tracking-wider transition-all duration-150 shadow-lg shadow-purple-900/20">
+                    <span>Open Original Website</span>
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                    </svg>
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main App State JavaScript -->
+    <script src="/assets/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,31 @@
+# Database
+*.db
+backend/reader.db
+
+# Swift Build & Binaries
+llm-bridge
+.build/
+.swiftpm/
+Packages/
+Package.resolved
+
+# Python Caches & Environments
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.venv
+env/
+venv/
+ENV/
+.pytest_cache/
+
+# OS-Specific
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
