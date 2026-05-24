@@ -244,7 +244,7 @@ class SyncEngine:
         and parses the resulting structured MasterStory JSON output.
         """
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        binary_path = os.path.abspath(os.path.join(base_dir, "../llm-bridge"))
+        binary_path = os.path.abspath(os.path.join(base_dir, "../bridge/.build/arm64-apple-macosx/release/llm-bridge"))
 
         if not os.path.exists(binary_path):
             print(f"WARNING: Swift binary not found at {binary_path}. Falling back to default mock summary.")
@@ -313,11 +313,31 @@ class SyncEngine:
             sentences = self.extract_sentences(clean_text, 3)
             if not sentences:
                 sentences = [f"No description provided by source. View the full article on {art['source_name']}."]
+            
+            # Simple heuristic tagger
+            common_tags = {
+                "Apple": ["apple", "macbook", "ios", "iphone", "ipad", "mac", "airpods", "watchos"],
+                "Google": ["google", "gemini", "android", "pixel"],
+                "AI": ["ai", "artificial intelligence", "chatgpt", "openai", "llm", "chatbot"],
+                "Security": ["hackers", "vulnerability", "encryption", "filevault"],
+                "Review": ["review", "hands-on", "tested"],
+                "Rumor": ["rumor", "report", "leak", "unannounced"],
+                "Deals": ["deals", "sale", "discount", "off"]
+            }
+            assigned_tags = []
+            combined_text = (art["title"] + " " + art.get("summary", "")).lower()
+            for tag, keywords in common_tags.items():
+                if any(k in combined_text for k in keywords):
+                    assigned_tags.append(tag)
+            if not assigned_tags:
+                assigned_tags = ["Tech"]
+
             return {
                 "masterTitle": art["title"],
                 "coreSummaryBullets": sentences,
                 "sourceOutlets": [{"source_name": art["source_name"], "url": art["url"]}],
-                "uniqueAngles": None
+                "uniqueAngles": None,
+                "tags": assigned_tags
             }
         else:
             title = articles[0]["title"]
@@ -332,14 +352,23 @@ class SyncEngine:
                 bullets.append(f"[{art['source_name']}] {art['title']} — {snippet}")
                 outlets.append({"source_name": art["source_name"], "url": art["url"]})
             
-            return {
-                "masterTitle": title,
-                "coreSummaryBullets": bullets,
-                "sourceOutlets": outlets,
-                "uniqueAngles": [
-                    "Note: Native Apple Intelligence bridge was bypassed or local FoundationModels was unavailable (fallback generated locally)."
-                ]
-            }
+        combined_multi_text = (title + " " + " ".join([a.get("summary", "") for a in articles])).lower()
+        assigned_tags_multi = []
+        for tag, keywords in common_tags.items():
+            if any(k in combined_multi_text for k in keywords):
+                assigned_tags_multi.append(tag)
+        if not assigned_tags_multi:
+            assigned_tags_multi = ["Tech"]
+
+        return {
+            "masterTitle": title,
+            "coreSummaryBullets": bullets,
+            "sourceOutlets": outlets,
+            "uniqueAngles": [
+                "Note: Native Apple Intelligence bridge was bypassed or local FoundationModels was unavailable (fallback generated locally)."
+            ],
+            "tags": assigned_tags_multi
+        }
 
     def sync_all(self, run_llm=True):
         """Execute full synchronization pipeline for all feeds."""
@@ -383,7 +412,8 @@ class SyncEngine:
                 master_story_id = self.db.add_master_story(
                     title=story_data["masterTitle"],
                     summary_bullets=story_data["coreSummaryBullets"],
-                    unique_angles=story_data.get("uniqueAngles")
+                    unique_angles=story_data.get("uniqueAngles"),
+                    tags=story_data.get("tags")
                 )
                 
                 # Associate articles with MasterStory

@@ -229,6 +229,17 @@
                     </form>
                 </div>
 
+                <!-- Tags List -->
+                <div class="flex-grow flex flex-col gap-3">
+                    <div class="flex justify-between items-center">
+                        <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400 font-outfit">Topics</h2>
+                    </div>
+                    <div id="sidebar-tags-list" class="flex flex-wrap gap-1.5 overflow-y-auto max-h-[200px]">
+                        <!-- Render tags dynamically -->
+                        <div class="text-xs text-slate-500 text-center py-4 w-full">Loading topics...</div>
+                    </div>
+                </div>
+
                 <!-- Tracked Feeds List -->
                 <div class="flex-grow flex flex-col gap-3">
                     <div class="flex justify-between items-center">
@@ -314,6 +325,8 @@
 
                 <!-- Filter Banner -->
                 <div id="filter-banner" class="hidden"></div>
+                <!-- Tag Filter Banner -->
+                <div id="tag-filter-banner" class="hidden"></div>
 
                 <!-- Feed loading indicator -->
                 <div id="feed-loader" class="hidden flex flex-col items-center justify-center py-16 gap-3">

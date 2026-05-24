@@ -37,6 +37,7 @@ struct MasterStory: Codable {
     let coreSummaryBullets: [String]
     let sourceOutlets: [SourceLink]
     let uniqueAngles: UniqueAnglesValue?
+    let tags: [String]?
 }
 
 struct ArticleInput: Codable {
@@ -81,6 +82,10 @@ do {
       ],
       "uniqueAngles": [
         "Optional differing perspective text"
+      ],
+      "tags": [
+        "CategoryTag1",
+        "CategoryTag2"
       ]
     }
     
@@ -89,6 +94,7 @@ do {
     2. 'coreSummaryBullets': 2-4 comprehensive bullet points. Each bullet point MUST track its facts back to their source, adding explicit inline markers like "[SourceName]" at the end of the sentence or fact.
     3. 'sourceOutlets': Compile the unique sources and URLs from the input.
     4. 'uniqueAngles': Call out any distinct takes, unique editorial angles, or conflicting information between different sites (e.g. "While Source A reports X, Source B reports Y"). If all sources report exactly the same facts with no differing perspectives or it is a single article, set this to null or leave empty.
+    5. 'tags': Generate 1-3 appropriate category tags for the story (e.g., "Apple Intelligence", "iOS 18", "Rumor") and place them in the 'tags' array.
     
     """
     

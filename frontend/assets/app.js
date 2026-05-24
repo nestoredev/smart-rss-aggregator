@@ -7,6 +7,7 @@ let allStories = [];
 let selectedFeedId = null;
 let selectedCoverage = "all"; // Coverage filter state: 'all' | 'multi' | 'single'
 let activeFeedViewFilter = "unread"; // 'unread' | 'saved'
+let activeTagFilter = null;
 let currentArticleId = null;
 let currentStoryId = null;
 
@@ -113,10 +114,10 @@ function renderFeedsUI() {
                 onclick="toggleFeedFilter(${feed.id})"
                 class="flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all duration-200 group ${activeClass}"
             >
-                <div class="flex flex-col truncate pr-2">
-                    <div class="flex items-center gap-2">
+                <div class="flex flex-col flex-1 min-w-0 pr-2">
+                    <div class="flex items-center justify-between gap-2">
                         <span class="text-xs font-bold truncate font-outfit">${escapeHTML(feed.title)}</span>
-                        ${feed.unread_count > 0 ? `<span class="text-[9px] px-1.5 py-0.5 rounded-full bg-purple-500/20 border border-purple-500/30 text-purple-300 font-bold leading-none">${feed.unread_count}</span>` : ''}
+                        ${feed.unread_count > 0 ? `<span class="text-[9px] px-1.5 py-0.5 rounded-full bg-purple-500/20 border border-purple-500/30 text-purple-300 font-bold leading-none flex-shrink-0">${feed.unread_count}</span>` : ''}
                     </div>
                     <span class="text-[9px] text-slate-500 truncate mt-0.5">${escapeHTML(feed.site_url)}</span>
                 </div>
@@ -176,6 +177,11 @@ function renderStoriesUI() {
         storiesToRender = storiesToRender.filter(story => story.articles.length === 1);
     }
     
+    // Filter by tag if selected
+    if (activeTagFilter) {
+        storiesToRender = storiesToRender.filter(story => story.tags && story.tags.includes(activeTagFilter));
+    }
+    
     countSpan.textContent = `${storiesToRender.length} ${storiesToRender.length === 1 ? 'story' : 'stories'}`;
     
     // Render Filter Banner if source filter is active
@@ -200,6 +206,31 @@ function renderStoriesUI() {
     } else {
         filterBanner.classList.add("hidden");
     }
+    
+    // Render Tag Filter Banner
+    const tagFilterBanner = document.getElementById("tag-filter-banner");
+    if (activeTagFilter) {
+        tagFilterBanner.innerHTML = `
+            <div class="flex items-center justify-between p-4 mt-2 rounded-2xl bg-cyan-950/20 border border-cyan-500/20 text-xs font-semibold text-cyan-300">
+                <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-cyan-500 animate-pulse"></span>
+                    <span>Filtering by Tag: <strong class="text-cyan-200">#${escapeHTML(activeTagFilter)}</strong></span>
+                </div>
+                <button 
+                    onclick="clearTagFilter()" 
+                    class="px-3 py-1.5 rounded-lg bg-cyan-950/40 border border-cyan-500/30 hover:bg-cyan-600 hover:text-white transition-all duration-150 font-bold uppercase tracking-wider text-[10px]"
+                >
+                    Clear Tag
+                </button>
+            </div>
+        `;
+        tagFilterBanner.classList.remove("hidden");
+    } else {
+        tagFilterBanner.classList.add("hidden");
+    }
+    
+    // Render the sidebar tags list dynamically
+    renderSidebarTags();
     
     if (allStories.length > 0) {
         statusSpan.textContent = "Idle";
@@ -251,7 +282,10 @@ function renderStoriesUI() {
             : "";
 
         return `
-            <div class="glass-panel intel-border-glow rounded-3xl p-5 sm:p-6 lg:p-8 flex flex-col gap-6 relative overflow-hidden group">
+            <div 
+                onclick="openReader(event, ${story.articles[0].id}, ${story.id})"
+                class="glass-panel intel-border-glow rounded-3xl p-5 sm:p-6 lg:p-8 flex flex-col gap-6 relative overflow-hidden group cursor-pointer"
+            >
                 <!-- Glow Gradient bar -->
                 <div class="absolute left-0 top-0 bottom-0 w-[4px] bg-gradient-to-b from-blue-500 via-purple-500 to-pink-500 rounded-r"></div>
 
@@ -263,6 +297,14 @@ function renderStoriesUI() {
                         </span>
                         <span class="text-slate-700">•</span>
                         <span class="text-[10px] text-slate-400 font-medium">${formatDate(story.published_at)}</span>
+                    </div>
+                    <div class="flex flex-wrap gap-1.5 mt-1">
+                        ${story.tags ? story.tags.map(tag => `
+                            <span 
+                                onclick="setTagFilter('${escapeHTML(tag)}')"
+                                class="text-[9px] font-bold uppercase tracking-wider text-cyan-300 bg-cyan-950/30 hover:bg-cyan-900/50 hover:text-cyan-100 border border-cyan-500/20 px-2 py-0.5 rounded cursor-pointer transition-colors"
+                            >#${escapeHTML(tag)}</span>
+                        `).join("") : ''}
                     </div>
                     <h4 class="font-outfit font-extrabold text-xl text-slate-100 group-hover:text-white transition-colors mt-1">
                         ${escapeHTML(story.title)}
@@ -388,6 +430,62 @@ function clearFeedFilter() {
     renderFeedsUI();
     renderStoriesUI();
     closeMobileSidebar(); // Auto-close sidebar panel on mobile devices
+}
+
+// Set tag filter
+function setTagFilter(tag) {
+    activeTagFilter = tag;
+    renderStoriesUI();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// Clear tag filter
+function clearTagFilter() {
+    activeTagFilter = null;
+    renderStoriesUI();
+}
+
+// Render the sidebar topics list based on unique tags in current stories
+function renderSidebarTags() {
+    const tagsContainer = document.getElementById("sidebar-tags-list");
+    if (!tagsContainer) return;
+    
+    // Extract unique tags from all stories currently available
+    const tagSet = new Set();
+    allStories.forEach(story => {
+        if (story.tags && Array.isArray(story.tags)) {
+            story.tags.forEach(tag => tagSet.add(tag));
+        }
+    });
+    
+    // Convert to sorted array
+    const uniqueTags = Array.from(tagSet).sort();
+    
+    if (uniqueTags.length === 0) {
+        tagsContainer.innerHTML = `<div class="text-xs text-slate-500 text-center py-4 w-full">No topics discovered yet.</div>`;
+        return;
+    }
+    
+    tagsContainer.innerHTML = "";
+    uniqueTags.forEach(tag => {
+        const isActive = activeTagFilter === tag;
+        const tagEl = document.createElement("button");
+        tagEl.onclick = () => {
+            if (isActive) {
+                clearTagFilter();
+            } else {
+                setTagFilter(tag);
+            }
+        };
+        
+        tagEl.className = `px-2.5 py-1.5 rounded-lg text-[11px] font-bold tracking-wide transition-all duration-200 cursor-pointer shadow-sm border ${
+            isActive 
+                ? 'bg-cyan-500/20 border-cyan-500/40 text-cyan-200 shadow-cyan-900/20' 
+                : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800/80 hover:border-slate-700'
+        }`;
+        tagEl.textContent = `#${tag}`;
+        tagsContainer.appendChild(tagEl);
+    });
 }
 
 // Set coverage filter ('all' | 'multi' | 'single')

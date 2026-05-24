@@ -48,6 +48,7 @@ class Database:
                 title TEXT NOT NULL,
                 summary_bullets TEXT NOT NULL, -- JSON serialized list of strings
                 unique_angles TEXT,            -- JSON serialized list of strings, nullable
+                tags TEXT,                     -- JSON serialized list of strings, nullable
                 created_at TEXT NOT NULL
             );
             """)
@@ -77,6 +78,10 @@ class Database:
                 conn.execute("ALTER TABLE articles ADD COLUMN is_read INTEGER DEFAULT 0;")
             if "is_saved" not in columns:
                 conn.execute("ALTER TABLE articles ADD COLUMN is_saved INTEGER DEFAULT 0;")
+                
+            ms_columns = [row["name"] for row in conn.execute("PRAGMA table_info(master_stories)").fetchall()]
+            if "tags" not in ms_columns:
+                conn.execute("ALTER TABLE master_stories ADD COLUMN tags TEXT;")
             conn.commit()
 
     # --- FEED CRUD ---
@@ -182,18 +187,19 @@ class Database:
 
     # --- MASTER STORIES CRUD ---
 
-    def add_master_story(self, title, summary_bullets, unique_angles=None):
+    def add_master_story(self, title, summary_bullets, unique_angles=None, tags=None):
         created_at = datetime.utcnow().isoformat()
         summary_json = json.dumps(summary_bullets)
         angles_json = json.dumps(unique_angles) if unique_angles else None
+        tags_json = json.dumps(tags) if tags else None
         
         with self._get_connection() as conn:
             cursor = conn.execute(
                 """
-                INSERT INTO master_stories (title, summary_bullets, unique_angles, created_at)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO master_stories (title, summary_bullets, unique_angles, tags, created_at)
+                VALUES (?, ?, ?, ?, ?)
                 """,
-                (title, summary_json, angles_json, created_at)
+                (title, summary_json, angles_json, tags_json, created_at)
             )
             conn.commit()
             return cursor.lastrowid
@@ -210,6 +216,7 @@ class Database:
                 # Decode JSON fields
                 story["summary_bullets"] = json.loads(story["summary_bullets"])
                 story["unique_angles"] = json.loads(story["unique_angles"]) if story["unique_angles"] else None
+                story["tags"] = json.loads(story["tags"]) if story.get("tags") else None
                 
                 # Fetch linked articles based on filter_mode
                 if filter_mode == "unread":
