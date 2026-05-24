@@ -90,14 +90,14 @@ make
 
 ## Step 3: Launching the Aggregator Server
 
-Start the FastAPI application. It runs locally on port `5000`:
+Start the FastAPI application. It runs locally on port `5005`:
 
 ```bash
 python -m backend.app
 ```
 
 Now, open your web browser and navigate to:
-👉 **[http://localhost:5000](http://localhost:5000)**
+👉 **[http://localhost:5005](http://localhost:5005)**
 
 ---
 
