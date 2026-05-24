@@ -93,7 +93,7 @@ make
 Start the FastAPI application. It runs locally on port `5005`:
 
 ```bash
-python -m backend.app
+python3 -m backend.app
 ```
 
 Now, open your web browser and navigate to:
