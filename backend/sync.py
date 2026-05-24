@@ -309,7 +309,8 @@ class SyncEngine:
         """Fallback summary generator in case the Swift local LLM bridge is unavailable or fails."""
         if len(articles) == 1:
             art = articles[0]
-            sentences = self.extract_sentences(art["summary"], 3)
+            clean_text = self.clean_html(art["summary"])
+            sentences = self.extract_sentences(clean_text, 3)
             if not sentences:
                 sentences = [f"No description provided by source. View the full article on {art['source_name']}."]
             return {
@@ -323,7 +324,8 @@ class SyncEngine:
             bullets = []
             outlets = []
             for art in articles:
-                sentences = self.extract_sentences(art["summary"], 1)
+                clean_text = self.clean_html(art["summary"])
+                sentences = self.extract_sentences(clean_text, 1)
                 snippet = sentences[0] if sentences else "View original coverage."
                 if len(snippet) > 180:
                     snippet = snippet[:177] + "..."
