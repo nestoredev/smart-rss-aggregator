@@ -114,7 +114,10 @@ function renderFeedsUI() {
                 class="flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all duration-200 group ${activeClass}"
             >
                 <div class="flex flex-col truncate pr-2">
-                    <span class="text-xs font-bold truncate font-outfit">${escapeHTML(feed.title)}</span>
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs font-bold truncate font-outfit">${escapeHTML(feed.title)}</span>
+                        ${feed.unread_count > 0 ? `<span class="text-[9px] px-1.5 py-0.5 rounded-full bg-purple-500/20 border border-purple-500/30 text-purple-300 font-bold leading-none">${feed.unread_count}</span>` : ''}
+                    </div>
                     <span class="text-[9px] text-slate-500 truncate mt-0.5">${escapeHTML(feed.site_url)}</span>
                 </div>
                 <button 
@@ -749,8 +752,9 @@ async function toggleCurrentArticleReadState() {
         // Update Drawer buttons instantly
         updateReaderButtonsUI(article);
         
-        // Refresh master stories in the background
+        // Refresh master stories and feeds in the background
         await fetchStories();
+        await fetchFeeds();
         
     } catch (err) {
         alert(`Failed to update read state: ${err.message}`);
@@ -823,8 +827,9 @@ async function toggleArticleReadInline(event, articleId, storyId) {
             updateReaderButtonsUI(article);
         }
         
-        // Refresh master stories
+        // Refresh master stories and feed counts
         await fetchStories();
+        await fetchFeeds();
         
     } catch (err) {
         console.error("Failed to toggle read state inline:", err);
@@ -861,8 +866,9 @@ async function markStoryAsRead(event, storyId) {
             }
         });
         
-        // Refresh master stories
+        // Refresh master stories and feed counts
         await fetchStories();
+        await fetchFeeds();
         
     } catch (err) {
         console.error("Error marking story articles as read:", err);
@@ -931,8 +937,9 @@ async function markAllArticlesAsRead() {
             }
         });
         
-        // Refresh master stories
+        // Refresh master stories and feed counts
         await fetchStories();
+        await fetchFeeds();
         
     } catch (err) {
         console.error("Failed to mark all articles as read:", err);

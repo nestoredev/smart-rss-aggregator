@@ -98,7 +98,13 @@ class Database:
 
     def get_feeds(self):
         with self._get_connection() as conn:
-            rows = conn.execute("SELECT * FROM feeds ORDER BY title ASC").fetchall()
+            query = """
+            SELECT f.*, 
+                   (SELECT COUNT(*) FROM articles a WHERE a.feed_id = f.id AND a.is_read = 0 AND a.master_story_id IS NOT NULL) as unread_count
+            FROM feeds f 
+            ORDER BY f.title ASC
+            """
+            rows = conn.execute(query).fetchall()
             return [dict(row) for row in rows]
 
     def delete_feed(self, feed_id):
