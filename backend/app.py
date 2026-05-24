@@ -33,6 +33,12 @@ sync_engine.start_background_sync(interval_seconds=3600)
 class FeedAddRequest(BaseModel):
     url: str
 
+class ArticleStateRequest(BaseModel):
+    state: bool
+
+class ArticleSaveRequest(BaseModel):
+    state: bool
+
 # --- API ENDPOINTS ---
 
 @app.get("/api/feeds")
@@ -83,9 +89,28 @@ def delete_feed(feed_id: int):
     return {"message": f"Feed {feed_id} successfully deleted"}
 
 @app.get("/api/stories")
-def get_stories():
-    """Retrieve all synthesized Master Stories with source articles."""
-    return db.get_master_stories()
+def get_stories(filter: str = "unread"):
+    """Retrieve all synthesized Master Stories with source articles, filtered by state."""
+    if filter not in ["unread", "saved", "all"]:
+        filter = "unread"
+    return db.get_master_stories(filter_mode=filter)
+
+@app.post("/api/articles/{article_id}/read")
+def set_article_read(article_id: int, payload: ArticleStateRequest):
+    """Mark an article as read or unread."""
+    db.set_article_read_state(article_id, payload.state)
+    return {"status": "success", "article_id": article_id, "is_read": payload.state}
+
+@app.post("/api/articles/{article_id}/save")
+def set_article_saved(article_id: int, payload: ArticleSaveRequest):
+    """Mark an article as saved (Read Later) or unsaved."""
+    db.set_article_save_state(article_id, payload.state)
+    return {"status": "success", "article_id": article_id, "is_saved": payload.state}
+
+@app.get("/api/articles/saved/count")
+def get_saved_count():
+    """Retrieve the count of saved (Read Later) articles."""
+    return {"count": db.get_saved_articles_count()}
 
 @app.post("/api/sync")
 def trigger_sync():

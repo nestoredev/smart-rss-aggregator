@@ -63,10 +63,20 @@ class Database:
                 published_at TEXT NOT NULL,
                 fetched_at TEXT NOT NULL,
                 master_story_id INTEGER,
+                is_read INTEGER DEFAULT 0,
+                is_saved INTEGER DEFAULT 0,
                 FOREIGN KEY (feed_id) REFERENCES feeds(id) ON DELETE CASCADE,
                 FOREIGN KEY (master_story_id) REFERENCES master_stories(id) ON DELETE SET NULL
             );
             """)
+            conn.commit()
+
+            # Schema Migration: dynamically add is_read and is_saved if they do not exist in legacy database
+            columns = [row["name"] for row in conn.execute("PRAGMA table_info(articles)").fetchall()]
+            if "is_read" not in columns:
+                conn.execute("ALTER TABLE articles ADD COLUMN is_read INTEGER DEFAULT 0;")
+            if "is_saved" not in columns:
+                conn.execute("ALTER TABLE articles ADD COLUMN is_saved INTEGER DEFAULT 0;")
             conn.commit()
 
     # --- FEED CRUD ---
@@ -182,8 +192,8 @@ class Database:
             conn.commit()
             return cursor.lastrowid
 
-    def get_master_stories(self):
-        """Fetch all master stories alongside their associated source articles."""
+    def get_master_stories(self, filter_mode="unread"):
+        """Fetch all master stories alongside their associated source articles, filtered by state."""
         with self._get_connection() as conn:
             stories_rows = conn.execute("SELECT * FROM master_stories").fetchall()
             stories = []
@@ -195,21 +205,41 @@ class Database:
                 story["summary_bullets"] = json.loads(story["summary_bullets"])
                 story["unique_angles"] = json.loads(story["unique_angles"]) if story["unique_angles"] else None
                 
-                # Fetch linked articles
-                articles_rows = conn.execute(
+                # Fetch linked articles based on filter_mode
+                if filter_mode == "unread":
+                    query = """
+                    SELECT a.id, a.feed_id, a.title, a.url, a.summary, a.published_at, a.is_read, a.is_saved, f.title as source_name
+                    FROM articles a
+                    JOIN feeds f ON a.feed_id = f.id
+                    WHERE a.master_story_id = ? AND a.is_read = 0
                     """
-                    SELECT a.id, a.feed_id, a.title, a.url, a.summary, a.published_at, f.title as source_name
+                elif filter_mode == "saved":
+                    query = """
+                    SELECT a.id, a.feed_id, a.title, a.url, a.summary, a.published_at, a.is_read, a.is_saved, f.title as source_name
+                    FROM articles a
+                    JOIN feeds f ON a.feed_id = f.id
+                    WHERE a.master_story_id = ? AND a.is_saved = 1
+                    """
+                else:  # "all"
+                    query = """
+                    SELECT a.id, a.feed_id, a.title, a.url, a.summary, a.published_at, a.is_read, a.is_saved, f.title as source_name
                     FROM articles a
                     JOIN feeds f ON a.feed_id = f.id
                     WHERE a.master_story_id = ?
-                    """,
-                    (story["id"],)
-                )
+                    """
+                    
+                articles_rows = conn.execute(query, (story["id"],)).fetchall()
                 story["articles"] = [dict(a_row) for a_row in articles_rows]
                 
-                # If no linked articles, it's an orphaned story (skip and queue for deletion)
+                # If no linked articles in this filter view, skip it
                 if not story["articles"]:
-                    orphaned_ids.append(story["id"])
+                    # Only delete from DB if filter_mode is "all" or if there are absolutely no articles associated in the entire DB
+                    if filter_mode == "all":
+                        orphaned_ids.append(story["id"])
+                    else:
+                        total_linked = conn.execute("SELECT COUNT(*) FROM articles WHERE master_story_id = ?", (story["id"],)).fetchone()[0]
+                        if total_linked == 0:
+                            orphaned_ids.append(story["id"])
                     continue
                 
                 # Determine the latest published_at among linked articles
@@ -226,3 +256,23 @@ class Database:
             # Sort stories by published_at DESC (most recent stories at the top)
             stories.sort(key=lambda s: s["published_at"], reverse=True)
             return stories
+
+    def set_article_read_state(self, article_id, is_read):
+        """Update the read state of an article."""
+        with self._get_connection() as conn:
+            conn.execute("UPDATE articles SET is_read = ? WHERE id = ?", (1 if is_read else 0, article_id))
+            conn.commit()
+            return True
+
+    def set_article_save_state(self, article_id, is_saved):
+        """Update the saved (Read Later) state of an article."""
+        with self._get_connection() as conn:
+            conn.execute("UPDATE articles SET is_saved = ? WHERE id = ?", (1 if is_saved else 0, article_id))
+            conn.commit()
+            return True
+
+    def get_saved_articles_count(self):
+        """Return the count of saved (Read Later) articles in the database."""
+        with self._get_connection() as conn:
+            row = conn.execute("SELECT COUNT(*) FROM articles WHERE is_saved = 1").fetchone()
+            return row[0] if row else 0

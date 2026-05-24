@@ -6,26 +6,62 @@ let allFeeds = [];
 let allStories = [];
 let selectedFeedId = null;
 let selectedCoverage = "all"; // Coverage filter state: 'all' | 'multi' | 'single'
+let activeFeedViewFilter = "unread"; // 'unread' | 'saved'
+let currentArticleId = null;
+let currentStoryId = null;
 
 // Initialize App Data and States
 document.addEventListener("DOMContentLoaded", () => {
     renderCoverageButtonsUI(); // Set up button states
     fetchFeeds();
     fetchStories();
+    updateSavedBadgeCount(); // Fetch and render bookmarked count
     
     // Poll stories every 10 seconds to catch live background sync updates
     setInterval(fetchStories, 10000);
+    setInterval(updateSavedBadgeCount, 10000); // Poll saved count
 });
+
+// Safari-safe ISO 8601 Parser (truncates microseconds to prevent Invalid Date on iOS/Safari)
+function parseISOToLocalDate(isoString) {
+    if (!isoString) return null;
+    let dateStr = isoString;
+    
+    // Strip microseconds to exactly 3 decimal places for Safari compliance
+    if (dateStr.includes(".")) {
+        const parts = dateStr.split(".");
+        let msPart = parts[1];
+        let offset = "";
+        if (msPart.endsWith("Z")) {
+            offset = "Z";
+            msPart = msPart.slice(0, -1);
+        } else if (msPart.includes("+")) {
+            const idx = msPart.indexOf("+");
+            offset = msPart.substring(idx);
+            msPart = msPart.substring(0, idx);
+        } else if (msPart.includes("-")) {
+            const idx = msPart.indexOf("-");
+            offset = msPart.substring(idx);
+            msPart = msPart.substring(0, idx);
+        }
+        dateStr = parts[0] + "." + msPart.substring(0, 3) + offset;
+    }
+    
+    // Append UTC 'Z' if no explicit timezone offset is present (inspect timePart only to prevent date hyphen matches)
+    const timePart = dateStr.includes("T") ? dateStr.split("T")[1] : dateStr;
+    const hasOffset = dateStr.endsWith("Z") || timePart.includes("+") || timePart.includes("-");
+    if (!hasOffset) {
+        dateStr += "Z";
+    }
+    
+    const date = new Date(dateStr);
+    return isNaN(date.getTime()) ? null : date;
+}
 
 // Helper: Format ISO Dates elegantly in user's local timezone
 function formatDate(isoString) {
-    if (!isoString) return "";
-    let dateStr = isoString;
-    // Standardize ISO timestamps without explicit offsets to treat as UTC (ensuring correct local translation)
-    if (!dateStr.endsWith("Z") && !dateStr.includes("+") && !dateStr.includes("-")) {
-        dateStr += "Z";
-    }
-    const date = new Date(dateStr);
+    const date = parseISOToLocalDate(isoString);
+    if (!date) return "";
     return date.toLocaleDateString("en-US", {
         month: "short",
         day: "numeric",
@@ -42,6 +78,7 @@ async function fetchFeeds() {
         
         allFeeds = await res.json();
         renderFeedsUI();
+        updateLastScannedTime(); // Update Last Scanned indicator using real fetch timestamps!
         
     } catch (err) {
         console.error("Error fetching feeds:", err);
@@ -97,7 +134,7 @@ function renderFeedsUI() {
 // 2. Fetch Aggregated Master Stories
 async function fetchStories() {
     try {
-        const res = await fetch(`${API_BASE}/stories?t=${Date.now()}`);
+        const res = await fetch(`${API_BASE}/stories?filter=${activeFeedViewFilter}&t=${Date.now()}`);
         if (!res.ok) throw new Error("Failed to fetch master stories");
         
         allStories = await res.json();
@@ -164,14 +201,6 @@ function renderStoriesUI() {
     if (allStories.length > 0) {
         statusSpan.textContent = "Idle";
         statusSpan.className = "text-xs font-semibold text-slate-200 mt-0.5";
-        
-        // Get absolute latest scan time based on published_at
-        const times = allStories.map(s => {
-            const dateVal = s.published_at || s.created_at;
-            return new Date(dateVal + (dateVal.endsWith("Z") ? "" : "Z")).getTime();
-        });
-        const maxTime = new Date(Math.max(...times));
-        scanSpan.textContent = maxTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
     
     if (storiesToRender.length === 0) {
@@ -199,6 +228,7 @@ function renderStoriesUI() {
     
     feedContainer.innerHTML = storiesToRender.map(story => {
         const hasMultipleSources = story.articles.length > 1;
+        const isStorySaved = story.articles.every(a => a.is_saved);
         const uniqueAnglesHtml = story.unique_angles && story.unique_angles.length > 0
             ? `
                 <div class="p-4 rounded-2xl bg-amber-500/5 border border-amber-500/10 flex flex-col gap-2 mt-2">
@@ -249,31 +279,87 @@ function renderStoriesUI() {
                 <!-- Unique Angles Callout -->
                 ${uniqueAnglesHtml}
 
-                <!-- Coverage Sources -->
-                <div class="flex flex-col gap-2 border-t border-slate-900 pt-5">
-                    <span class="text-[10px] uppercase font-bold tracking-wider text-slate-500 font-outfit">Review Original Coverage</span>
-                    <div class="flex flex-wrap gap-2 mt-1">
-                        ${story.articles.map(art => `
-                            <div 
-                                onclick="openReader(event, ${art.id}, ${story.id})" 
-                                class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-950/50 hover:bg-purple-950/20 border border-slate-900 hover:border-purple-500/30 text-xs font-medium text-slate-300 hover:text-purple-300 transition-all duration-200 cursor-pointer select-none"
-                            >
-                                <span class="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
-                                <span class="font-semibold text-slate-200">${escapeHTML(art.source_name)}</span>
-                                <span class="hidden sm:inline-block text-[10px] text-slate-500 font-light truncate max-w-[120px]">${escapeHTML(art.title)}</span>
-                                <a 
-                                    href="${art.url}" 
-                                    target="_blank" 
-                                    onclick="event.stopPropagation()"
-                                    class="p-0.5 hover:text-slate-200 text-slate-500 hover:scale-105 active:scale-95 transition-all duration-150"
-                                    title="Open original website directly in new tab"
-                                >
-                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
-                                    </svg>
-                                </a>
-                            </div>
-                        `).join("")}
+                <!-- Coverage Sources & Actions -->
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-t border-slate-900 pt-5 mt-1">
+                    <div class="flex flex-col gap-2">
+                        <span class="text-[10px] uppercase font-bold tracking-wider text-slate-500 font-outfit">Review Original Coverage</span>
+                        <div class="flex flex-wrap gap-2 mt-1">
+                            ${story.articles.map(art => {
+                                const isSaved = art.is_saved;
+                                const dotColorClass = isSaved ? "bg-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.6)] animate-pulse" : "bg-blue-500";
+                                
+                                let borderClass = isSaved 
+                                    ? "border-amber-500/30 bg-amber-950/20 text-amber-200 hover:border-amber-500/50 shadow-md shadow-amber-950/20" 
+                                    : "bg-slate-950/50 border-slate-900 hover:border-purple-500/30 text-slate-300 hover:text-purple-300";
+                                
+                                if (art.is_read) {
+                                    borderClass += " opacity-40 hover:opacity-100 transition-opacity duration-150";
+                                }
+                                
+                                return `
+                                    <div 
+                                        onclick="openReader(event, ${art.id}, ${story.id})" 
+                                        class="flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-medium transition-all duration-200 cursor-pointer select-none ${borderClass}"
+                                    >
+                                        <span class="w-1.5 h-1.5 rounded-full ${dotColorClass}"></span>
+                                        <span class="font-semibold">${escapeHTML(art.source_name)}</span>
+                                        <span class="hidden sm:inline-block text-[10px] opacity-75 font-light truncate max-w-[120px]">${escapeHTML(art.title)}</span>
+                                        
+                                        <!-- Inline publication date/time in local timezone -->
+                                        <span class="text-[9px] opacity-60 font-semibold bg-slate-950/60 px-1.5 py-0.5 rounded-md border border-slate-900/60 select-none">${formatArticleTime(art.published_at)}</span>
+                                        
+                                        <!-- Inline Toggle Read Button -->
+                                        <button 
+                                            onclick="toggleArticleReadInline(event, ${art.id}, ${story.id})"
+                                            class="p-0.5 hover:text-emerald-400 text-slate-500 hover:scale-105 active:scale-95 transition-all duration-150 ml-1"
+                                            title="${art.is_read ? 'Mark as Unread' : 'Mark as Read'}"
+                                        >
+                                            <svg class="w-3.5 h-3.5 ${art.is_read ? 'text-emerald-400' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                                            </svg>
+                                        </button>
+
+                                        <a 
+                                            href="${art.url}" 
+                                            target="_blank" 
+                                            onclick="event.stopPropagation()"
+                                            class="p-0.5 hover:text-slate-200 text-slate-500 hover:scale-105 active:scale-95 transition-all duration-150"
+                                            title="Open original website directly in new tab"
+                                        >
+                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                                            </svg>
+                                        </a>
+                                    </div>
+                                `;
+                            }).join("")}
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center gap-2.5 self-start sm:self-center">
+                        <!-- Archive Story Button -->
+                        <button 
+                            onclick="markStoryAsRead(event, ${story.id})" 
+                            class="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-purple-950/30 border border-purple-500/20 hover:bg-purple-600 hover:border-purple-500 hover:text-white transition-all duration-150 text-xs font-bold uppercase tracking-wider text-purple-300 cursor-pointer active:scale-95 shadow-sm"
+                            title="Mark all articles in this story as read"
+                        >
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                            </svg>
+                            <span>Archive</span>
+                        </button>
+                        
+                        <!-- Save Story / Read Later Button -->
+                        <button 
+                            onclick="toggleStorySave(event, ${story.id})" 
+                            class="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl border transition-all duration-150 text-xs font-bold uppercase tracking-wider cursor-pointer active:scale-95 shadow-sm ${isStorySaved ? 'border-amber-500/30 bg-amber-950/20 text-amber-300 hover:text-amber-200 hover:bg-amber-900/30' : 'border-slate-800 bg-slate-900/60 text-slate-300 hover:text-white hover:bg-slate-800/60'}"
+                            title="${isStorySaved ? 'Remove story from Read Later' : 'Add story to Read Later'}"
+                        >
+                            <svg class="w-3.5 h-3.5 ${isStorySaved ? 'text-amber-400 fill-amber-400' : 'text-slate-400'}" fill="${isStorySaved ? 'currentColor' : 'none'}" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path>
+                            </svg>
+                            <span>${isStorySaved ? 'Saved' : 'Save Story'}</span>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -415,6 +501,7 @@ async function triggerSync() {
         const res = await fetch(`${API_BASE}/sync`, { method: "POST" });
         if (!res.ok) throw new Error("Sync failed");
         
+        await fetchFeeds();
         await fetchStories();
         
     } catch (err) {
@@ -483,6 +570,10 @@ function openReader(event, articleId, storyId) {
     const article = story.articles.find(a => a.id === articleId);
     if (!article) return;
     
+    // Cache active identifiers for footer toggles
+    currentArticleId = articleId;
+    currentStoryId = storyId;
+    
     // Set content
     document.getElementById("reader-title").textContent = article.title;
     document.getElementById("reader-source").textContent = article.source_name;
@@ -492,6 +583,9 @@ function openReader(event, articleId, storyId) {
     // Clean and set summary HTML
     const contentContainer = document.getElementById("reader-content");
     contentContainer.innerHTML = article.summary || "<p class='text-slate-500 italic'>No description provided in RSS feed.</p>";
+    
+    // Update Control Buttons (Read and Bookmark States)
+    updateReaderButtonsUI(article);
     
     // Display Drawer
     const drawer = document.getElementById("reader-drawer");
@@ -509,6 +603,52 @@ function openReader(event, articleId, storyId) {
     }, 15);
 }
 
+// Update the buttons inside the Reading Drawer based on article states
+function updateReaderButtonsUI(article) {
+    const readBtn = document.getElementById("reader-read-btn");
+    const saveBtn = document.getElementById("reader-save-btn");
+    
+    if (!readBtn || !saveBtn) return;
+    
+    // 1. Mark as Read Button
+    if (article.is_read) {
+        readBtn.className = "flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-800 bg-slate-900/60 text-slate-400 hover:text-white hover:bg-slate-800/60 transition-all duration-150 text-xs font-bold uppercase tracking-wider cursor-pointer";
+        readBtn.innerHTML = `
+            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+            </svg>
+            <span id="reader-read-text">Mark as Unread</span>
+        `;
+    } else {
+        readBtn.className = "flex items-center gap-2 px-4 py-2.5 rounded-xl border border-purple-500/20 bg-purple-950/20 text-purple-300 hover:text-white hover:bg-purple-900/30 transition-all duration-150 text-xs font-bold uppercase tracking-wider cursor-pointer";
+        readBtn.innerHTML = `
+            <svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+            </svg>
+            <span id="reader-read-text">Mark as Read</span>
+        `;
+    }
+    
+    // 2. Save for Later Button
+    if (article.is_saved) {
+        saveBtn.className = "flex items-center gap-2 px-4 py-2.5 rounded-xl border border-amber-500/30 bg-amber-950/20 text-amber-300 hover:text-amber-200 hover:bg-amber-900/30 transition-all duration-150 text-xs font-bold uppercase tracking-wider cursor-pointer";
+        saveBtn.innerHTML = `
+            <svg id="reader-save-icon" class="w-4 h-4 text-amber-400 fill-amber-400" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path>
+            </svg>
+            <span id="reader-save-text">Saved</span>
+        `;
+    } else {
+        saveBtn.className = "flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-800 bg-slate-900/60 text-slate-300 hover:text-white hover:bg-slate-800/60 transition-all duration-150 text-xs font-bold uppercase tracking-wider cursor-pointer";
+        saveBtn.innerHTML = `
+            <svg id="reader-save-icon" class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path>
+            </svg>
+            <span id="reader-save-text">Save for Later</span>
+        `;
+    }
+}
+
 // Close Article Reader Drawer
 function closeReaderDrawer() {
     const drawer = document.getElementById("reader-drawer");
@@ -523,5 +663,382 @@ function closeReaderDrawer() {
     
     setTimeout(() => {
         drawer.classList.add("hidden");
+        // Reset cached active identifiers when closed
+        currentArticleId = null;
+        currentStoryId = null;
     }, 300);
+}
+
+// --- READER STATE MANAGER & FILTER ACTIONS ---
+
+// Set feed view filter mode ('unread' | 'saved')
+function setFeedViewFilter(view) {
+    if (view !== "unread" && view !== "saved") return;
+    
+    activeFeedViewFilter = view;
+    
+    // Toggle active style on navigation buttons
+    const unreadBtn = document.getElementById("filter-view-unread");
+    const savedBtn = document.getElementById("filter-view-saved");
+    
+    if (unreadBtn && savedBtn) {
+        if (view === "unread") {
+            // Unread Active
+            unreadBtn.className = "w-full flex items-center justify-between py-2.5 px-4 rounded-xl border border-purple-500/20 bg-purple-950/20 text-sm font-semibold text-purple-200 hover:text-white transition-all duration-200 select-none shadow-sm cursor-pointer";
+            // Saved Inactive
+            savedBtn.className = "w-full flex items-center justify-between py-2.5 px-4 rounded-xl border border-slate-800 bg-slate-900/60 hover:bg-slate-800/50 text-sm font-semibold text-slate-300 hover:text-white transition-all duration-200 select-none cursor-pointer";
+        } else {
+            // Unread Inactive
+            unreadBtn.className = "w-full flex items-center justify-between py-2.5 px-4 rounded-xl border border-slate-800 bg-slate-900/60 hover:bg-slate-800/50 text-sm font-semibold text-slate-300 hover:text-white transition-all duration-200 select-none cursor-pointer";
+            // Saved Active
+            savedBtn.className = "w-full flex items-center justify-between py-2.5 px-4 rounded-xl border border-amber-500/20 bg-amber-950/20 text-sm font-semibold text-amber-200 hover:text-white transition-all duration-200 select-none shadow-sm cursor-pointer";
+        }
+    }
+    
+    // Refetch stories to load the corresponding database state
+    fetchStories();
+}
+
+// Fetch bookmark (Read Later) count from database and update badge
+async function updateSavedBadgeCount() {
+    try {
+        const res = await fetch(`${API_BASE}/articles/saved/count?t=${Date.now()}`);
+        if (!res.ok) throw new Error("Failed to fetch saved count");
+        
+        const data = await res.json();
+        const badge = document.getElementById("saved-badge");
+        
+        if (badge) {
+            badge.textContent = data.count;
+            if (data.count > 0) {
+                badge.className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-950/40 border border-amber-500/30 text-amber-400 font-bold shadow-[0_0_8px_rgba(245,158,11,0.15)] animate-pulse";
+            } else {
+                badge.className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-950/60 border border-slate-800 text-slate-400 font-bold";
+            }
+        }
+    } catch (err) {
+        console.error("Error updating saved badge count:", err);
+    }
+}
+
+// Toggle read state of the currently open article in reader
+async function toggleCurrentArticleReadState() {
+    if (!currentArticleId || !currentStoryId) return;
+    
+    // Find the current article in cached stories
+    const story = allStories.find(s => s.id === currentStoryId);
+    if (!story) return;
+    
+    const article = story.articles.find(a => a.id === currentArticleId);
+    if (!article) return;
+    
+    const newReadState = !article.is_read;
+    
+    try {
+        const res = await fetch(`${API_BASE}/articles/${currentArticleId}/read`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ state: newReadState })
+        });
+        
+        if (!res.ok) throw new Error("Failed to update read state");
+        
+        // Optimistically update local article state in cache
+        article.is_read = newReadState;
+        
+        // Update Drawer buttons instantly
+        updateReaderButtonsUI(article);
+        
+        // Refresh master stories in the background
+        await fetchStories();
+        
+    } catch (err) {
+        alert(`Failed to update read state: ${err.message}`);
+    }
+}
+
+// Toggle saved (Read Later) bookmark state of currently open article in reader
+async function toggleCurrentArticleSaveState() {
+    if (!currentArticleId || !currentStoryId) return;
+    
+    // Find the current article in cached stories
+    const story = allStories.find(s => s.id === currentStoryId);
+    if (!story) return;
+    
+    const article = story.articles.find(a => a.id === currentArticleId);
+    if (!article) return;
+    
+    const newSaveState = !article.is_saved;
+    
+    try {
+        const res = await fetch(`${API_BASE}/articles/${currentArticleId}/save`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ state: newSaveState })
+        });
+        
+        if (!res.ok) throw new Error("Failed to update saved state");
+        
+        // Optimistically update local article state in cache
+        article.is_saved = newSaveState;
+        
+        // Update Drawer buttons instantly
+        updateReaderButtonsUI(article);
+        
+        // Refresh saved count indicators and master stories in the background
+        await updateSavedBadgeCount();
+        await fetchStories();
+        
+    } catch (err) {
+        alert(`Failed to update save state: ${err.message}`);
+    }
+}
+
+// Toggle read state of an article directly inline from the main view feed card
+async function toggleArticleReadInline(event, articleId, storyId) {
+    if (event) event.stopPropagation(); // Avoid triggering openReader
+    
+    const story = allStories.find(s => s.id === storyId);
+    if (!story) return;
+    
+    const article = story.articles.find(a => a.id === articleId);
+    if (!article) return;
+    
+    const newReadState = !article.is_read;
+    
+    try {
+        const res = await fetch(`${API_BASE}/articles/${articleId}/read`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ state: newReadState })
+        });
+        
+        if (!res.ok) throw new Error("Failed to update read state");
+        
+        // Optimistically update local article state in cache
+        article.is_read = newReadState;
+        
+        // If this article was currently loaded in the open reader, sync reader drawer controls as well
+        if (currentArticleId === articleId) {
+            updateReaderButtonsUI(article);
+        }
+        
+        // Refresh master stories
+        await fetchStories();
+        
+    } catch (err) {
+        console.error("Failed to toggle read state inline:", err);
+    }
+}
+
+// Mark all articles in a consolidated story as read in a single batch call from card header
+async function markStoryAsRead(event, storyId) {
+    if (event) event.stopPropagation(); // Avoid triggering card drawer
+    
+    const story = allStories.find(s => s.id === storyId);
+    if (!story) return;
+    
+    // Get all articles in this story that are currently unread
+    const unreadArticles = story.articles.filter(a => !a.is_read);
+    if (unreadArticles.length === 0) return;
+    
+    try {
+        // Run parallel API updates
+        await Promise.all(unreadArticles.map(art => 
+            fetch(`${API_BASE}/articles/${art.id}/read`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ state: true })
+            })
+        ));
+        
+        // Optimistically mark them read in cache
+        unreadArticles.forEach(art => { 
+            art.is_read = true; 
+            // Sync reader drawer controls if this specific article is currently open
+            if (currentArticleId === art.id) {
+                updateReaderButtonsUI(art);
+            }
+        });
+        
+        // Refresh master stories
+        await fetchStories();
+        
+    } catch (err) {
+        console.error("Error marking story articles as read:", err);
+    }
+}
+
+// Mark all articles in the current view as read (supports full feed or specific source filters)
+async function markAllArticlesAsRead() {
+    // 1. Filter the stories exactly like renderStoriesUI does
+    let storiesToFilter = allStories;
+    if (selectedFeedId != null) {
+        storiesToFilter = allStories.filter(story => 
+            story.articles.some(art => art.feed_id == selectedFeedId)
+        );
+    }
+    
+    if (selectedCoverage === "multi") {
+        storiesToFilter = storiesToFilter.filter(story => story.articles.length > 1);
+    } else if (selectedCoverage === "single") {
+        storiesToFilter = storiesToFilter.filter(story => story.articles.length === 1);
+    }
+    
+    // 2. Extract unread articles we want to mark as read
+    let targetArticles = [];
+    storiesToFilter.forEach(story => {
+        story.articles.forEach(art => {
+            if (!art.is_read) {
+                // If a source filter is selected, only target articles from that source
+                if (selectedFeedId == null || art.feed_id == selectedFeedId) {
+                    targetArticles.push(art);
+                }
+            }
+        });
+    });
+    
+    if (targetArticles.length === 0) return;
+    
+    // Confirm if marking a large set of items as read to prevent accidental triggers
+    if (targetArticles.length > 5 && !confirm(`Are you sure you want to mark all ${targetArticles.length} items in the current view as read?`)) {
+        return;
+    }
+    
+    // 3. Update UI button to loading state
+    const markBtn = document.getElementById("mark-all-read-btn");
+    const markText = document.getElementById("mark-all-read-text");
+    if (markBtn && markText) {
+        markBtn.disabled = true;
+        markText.textContent = "Marking read...";
+    }
+    
+    try {
+        // Run updates in parallel
+        await Promise.all(targetArticles.map(art => 
+            fetch(`${API_BASE}/articles/${art.id}/read`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ state: true })
+            })
+        ));
+        
+        // Optimistically update cache
+        targetArticles.forEach(art => {
+            art.is_read = true;
+            if (currentArticleId === art.id) {
+                updateReaderButtonsUI(art);
+            }
+        });
+        
+        // Refresh master stories
+        await fetchStories();
+        
+    } catch (err) {
+        console.error("Failed to mark all articles as read:", err);
+    } finally {
+        if (markBtn && markText) {
+            markBtn.disabled = false;
+            markText.textContent = "Mark All as Read";
+        }
+    }
+}
+
+// Helper: Format article post time in user's local timezone with intelligent relative tags
+function formatArticleTime(isoString) {
+    const date = parseISOToLocalDate(isoString);
+    if (!date) return "";
+    
+    const now = new Date();
+    const isToday = date.toDateString() === now.toDateString();
+    
+    // Check if yesterday
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const isYesterday = date.toDateString() === yesterday.toDateString();
+    
+    const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+    
+    if (isToday) {
+        return `Today at ${timeStr}`;
+    } else if (isYesterday) {
+        return `Yesterday at ${timeStr}`;
+    } else {
+        const datePart = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+        return `${datePart} at ${timeStr}`;
+    }
+}
+
+// Fetch actual scan time from feeds data and render in user local timezone
+function updateLastScannedTime() {
+    const scanSpan = document.getElementById("last-scanned");
+    if (!scanSpan) return;
+    if (!allFeeds || allFeeds.length === 0) {
+        scanSpan.textContent = "Never";
+        return;
+    }
+    
+    // Extract last_fetched values that are non-null
+    const fetchedTimes = allFeeds
+        .map(f => f.last_fetched)
+        .filter(t => t != null);
+        
+    if (fetchedTimes.length === 0) {
+        scanSpan.textContent = "Never";
+        return;
+    }
+    
+    // Parse dates safely using parseISOToLocalDate
+    const timestamps = fetchedTimes.map(t => {
+        const date = parseISOToLocalDate(t);
+        return date ? date.getTime() : 0;
+    }).filter(time => time > 0);
+    
+    if (timestamps.length === 0) {
+        scanSpan.textContent = "Never";
+        return;
+    }
+    
+    const maxTimestamp = Math.max(...timestamps);
+    const maxDate = new Date(maxTimestamp);
+    // Format using our beautiful local-time-aware relative formatter
+    scanSpan.textContent = formatArticleTime(maxDate.toISOString());
+}
+
+// Toggle saved bookmark state of all articles inside a master story
+async function toggleStorySave(event, storyId) {
+    if (event) event.stopPropagation(); // Prevent opening card reader drawer
+    
+    const story = allStories.find(s => s.id === storyId);
+    if (!story) return;
+    
+    const isCurrentlySaved = story.articles.every(a => a.is_saved);
+    const targetSaveState = !isCurrentlySaved;
+    
+    try {
+        // Run parallel API bookmark updates
+        await Promise.all(story.articles.map(art => 
+            fetch(`${API_BASE}/articles/${art.id}/save`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ state: targetSaveState })
+            })
+        ));
+        
+        // Optimistically update all articles in the story
+        story.articles.forEach(art => {
+            art.is_saved = targetSaveState;
+            // Sync reader drawer controls if this specific article is currently open
+            if (currentArticleId === art.id) {
+                updateReaderButtonsUI(art);
+            }
+        });
+        
+        // Refresh dynamic UI elements
+        await updateSavedBadgeCount();
+        await fetchStories();
+        
+    } catch (err) {
+        console.error("Error toggling story save state:", err);
+    }
 }

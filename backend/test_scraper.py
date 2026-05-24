@@ -6,7 +6,7 @@ from backend.database import Database
 class TestScraperFormatting(unittest.TestCase):
     def setUp(self):
         import os
-        self.db_path = "test_reader.db"
+        self.db_path = os.path.abspath("test_reader.db")
         if os.path.exists(self.db_path):
             try:
                 os.remove(self.db_path)
