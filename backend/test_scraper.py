@@ -5,8 +5,24 @@ from backend.database import Database
 
 class TestScraperFormatting(unittest.TestCase):
     def setUp(self):
-        self.db = Database(db_path=":memory:")
+        import os
+        self.db_path = "test_reader.db"
+        if os.path.exists(self.db_path):
+            try:
+                os.remove(self.db_path)
+            except Exception:
+                pass
+        self.db = Database(db_path=self.db_path)
         self.sync_engine = SyncEngine(self.db)
+
+    def tearDown(self):
+        import os
+        # Clean up database file after test runs
+        try:
+            if os.path.exists(self.db_path):
+                os.remove(self.db_path)
+        except Exception:
+            pass
 
     def test_clean_inline_tags_nested(self):
         # A complex nested inline structure

@@ -5,6 +5,11 @@ from datetime import datetime
 
 class Database:
     def __init__(self, db_path="../reader.db"):
+        if db_path == ":memory:":
+            self.db_path = db_path
+            self._init_db()
+            return
+            
         # Make path absolute relative to this file's directory if it is relative
         if not os.path.isabs(db_path):
             base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -22,7 +27,8 @@ class Database:
         return conn
 
     def _init_db(self):
-        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+        if self.db_path != ":memory:":
+            os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         with self._get_connection() as conn:
             # Feeds table
             conn.execute("""
